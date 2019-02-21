@@ -5,11 +5,14 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 import lightgbm as lgb
-from sklearn.model_selection import StratifiedKFold
+
 from sklearn.metrics import matthews_corrcoef
 from sklearn.manifold import TSNE as tsne
 
 from lxyTools.adversarialValidation import adversarialValidation
+from specialTools.kfold import StratifiedKFold
+from lxyTools.singleModelUtils import singleModel
+
 
 train = pd.read_csv('./processedData/train.csv')
 test = pd.read_csv('./processedData/test.csv')
@@ -17,17 +20,25 @@ test = pd.read_csv('./processedData/test.csv')
 answer = pd.read_csv('./rawdata/sample_submission.csv')
 
 
+
+
 train_x = train.drop(['signal_id', 'id_measurement', 'target'], axis=1)
 train_y = train['target']
 
-# train_x =  train_x.drop(train_x.columns[4:7], axis=1)
-
+train_x =  train_x.drop(train_x.columns[4:7], axis=1)
+# train_x =  train_x.drop(train_x.columns[0:2], axis=1)
 
 test_x = test[train_x.columns]
 test_id = test.signal_id
 
 
-re = adversarialValidation(train_x, test_x)
+re = adversarialValidation(train_x, test_x,
+                           kfold=StratifiedKFold(
+                                    pd.concat([train.id_measurement,
+                                               test.id_measurement]),
+                                    n_splits=5,
+                                    random_state=0, shuffle=True))
+
 
 plt.figure(figsize=(12, 5))
 plt.bar(re.index, re.values)
@@ -63,14 +74,16 @@ def mcc_metric(y_true, y_pred_proba):
 train_pred = np.zeros(train.shape[0])
 test_pred = np.zeros(test.shape[0])
 
+
 fold_num=5
-kfold = StratifiedKFold(n_splits=fold_num, shuffle=True, random_state=10)
+kfold = StratifiedKFold(train.id_measurement, n_splits=fold_num, shuffle=True, random_state=10)
+feature_importances = np.zeros(train_x.shape[1])
 for i, (train_idx, valid_idx) in enumerate(kfold.split(train_x, train_y)):
 
     x_train_fold = train_x.iloc[train_idx]
-    y_train_fold = train_y[train_idx]
+    y_train_fold = train_y.iloc[train_idx]
     x_val_fold = train_x.iloc[valid_idx]
-    y_val_fold = train_y[valid_idx]
+    y_val_fold = train_y.iloc[valid_idx]
 
     model = lgb.LGBMClassifier(n_estimators=200,
                                learning_rate=0.05,
@@ -81,6 +94,7 @@ for i, (train_idx, valid_idx) in enumerate(kfold.split(train_x, train_y)):
 
     model.fit(x_train_fold, y_train_fold, eval_set=[(x_val_fold, y_val_fold)],
               verbose=20, eval_metric='auc')
+    feature_importances = feature_importances + model.feature_importances_
 
     val_pred = model.predict_proba(x_val_fold)[:, 1]
     train_pred[valid_idx] = val_pred
@@ -91,10 +105,17 @@ for i, (train_idx, valid_idx) in enumerate(kfold.split(train_x, train_y)):
     test_pred = test_pred + model.predict_proba(test_x)[:, 1]/fold_num
 
     print('---'*50)
-
-
 score, threshold = mcc_metric(train_y, train_pred)
 print('score:\t', score, '\tthreshold:\t', threshold)
+
+
+feature_importances = pd.Series(feature_importances)
+feature_importances.index = train_x.columns
+
+plt.figure(figsize=(12, 5))
+plt.bar(feature_importances.index, feature_importances.values)
+plt.show()
+
 
 plt.figure(figsize=(15,5))
 plt.subplot(121)
