@@ -8,7 +8,7 @@ import gc
 import math
 
 from scipy.signal import spectrogram
-
+from scipy.signal import welch
 from lxyTools.process import mutiProcessLoop
 
 
@@ -17,16 +17,18 @@ from lxyTools.process import mutiProcessLoop
 # window_size: 在原始序列上面求平均的窗口的大小
 # fft_window_size: fft之后的结果上求平均的窗口大小
 def signal2features(rawdata, window_size, fft_window_size,
-                    stft_segment_length, stft_overlap):
+                    stft_window_size, stft_overlap,
+                    welch_count_length, welch_count_overlap):
     num_mean_features = int(rawdata.shape[0]/window_size)
+
     num_fft_mean_features = int(rawdata.shape[0]/fft_window_size/2)
 
-    num_statistic_features = 9
+    num_stft_features = int(stft_window_size/2) + 1
 
-    num_stft_features = int(stft_segment_length/2) + 1
+    num_add_features = 12
 
     result = np.zeros((rawdata.shape[1],
-                       num_mean_features+num_fft_mean_features+num_statistic_features+num_stft_features))
+                       num_mean_features+num_fft_mean_features+num_stft_features+num_add_features))
 
     for i in range(rawdata.shape[1]):
         result[i, 0] = int(rawdata.columns[i])
@@ -36,7 +38,7 @@ def signal2features(rawdata, window_size, fft_window_size,
         result[i, 4] = rawdata[rawdata.columns[i]].values.min()
 
         f, t, Sxx = spectrogram(rawdata[rawdata.columns[i]].values,
-                                nperseg=stft_segment_length,
+                                nperseg=stft_window_size,
                                 noverlap=stft_overlap
                                 )
 
@@ -45,15 +47,25 @@ def signal2features(rawdata, window_size, fft_window_size,
         result[i, 7] = Sxx.max()
         result[i, 8] = Sxx.min()
 
+        result[i, num_add_features:(num_add_features+num_stft_features)] = Sxx.mean(axis=1)
+
+        f, Pxx = welch(rawdata[rawdata.columns[i]].values,
+                               nperseg=welch_count_length,
+                               noverlap=welch_count_overlap)
+
+        result[i, 9] = (Pxx>2.5).sum()
+        result[i, 10] = (Pxx>80).sum()
+        result[i, 11] = f[np.where(Pxx == Pxx.max())]
+
+
         for j in range(num_mean_features):
-            result[i, j+num_statistic_features] = rawdata[rawdata.columns[i]].values[(j*window_size) : ((j+1)*window_size)].mean()
+            result[i, j+num_add_features+num_stft_features] = rawdata[rawdata.columns[i]].values[(j*window_size) : ((j+1)*window_size)].mean()
 
         fft_re = np.fft.fft(rawdata[rawdata.columns[i]])[:int(rawdata.shape[0]/2)]
         fft_re_abs = np.sqrt(fft_re.real ** 2 + fft_re.imag ** 2)
-
         for j in range(num_fft_mean_features):
-            result[i, num_mean_features + j +num_statistic_features] = fft_re_abs[(j*fft_window_size) : ((j+1)*fft_window_size)].mean()
-        result[i, num_mean_features+num_statistic_features+num_fft_mean_features:] = Sxx.mean(axis=1)
+            result[i,  j + num_mean_features + num_add_features + num_stft_features] = fft_re_abs[(j*fft_window_size) : ((j+1)*fft_window_size)].mean()
+
     result = pd.DataFrame(result)
     result = result.rename({0: 'signal_id',
                             1: 'mean',
@@ -63,7 +75,10 @@ def signal2features(rawdata, window_size, fft_window_size,
                             5: 'stft_mean',
                             6: 'stft_std',
                             7: 'stft_max',
-                            8: 'stft_min'}, axis=1)
+                            8: 'stft_min',
+                            9: 'welch>2.5',
+                            10: 'welch>80',
+                            11: 'max_welch_f',}, axis=1)
 
     result.signal_id = result.signal_id.astype(int)
 
@@ -75,14 +90,16 @@ def readRawSignal_extractFeatures(path, subset_size=500, start_id=0, end_id=2904
                     path,
                     columns=[str(val) for val in range(start_id+x*subset_size, min(start_id+(x+1)*subset_size, end_id))]).to_pandas(),
                 160000, 80000,
-                stft_segment_length=256,
-                stft_overlap = 32,
+                stft_window_size=32,
+                stft_overlap=8,
+                welch_count_length=1024,
+                welch_count_overlap=256
                 )
     multiProcess = mutiProcessLoop(processFun, range(math.ceil((end_id-start_id)/subset_size)), n_process=4, silence=False)
     resultlist = multiProcess.run()
     return pd.concat(resultlist)
 
-train_features = readRawSignal_extractFeatures('./rawdata/train.parquet',subset_size=2000, start_id=0, end_id=8712)
+train_features = readRawSignal_extractFeatures('./rawdata/train.parquet',subset_size=2178, start_id=0, end_id=8712)
 test_features = readRawSignal_extractFeatures('./rawdata/test.parquet',subset_size=2000, start_id=8712, end_id=29049)
 
 gc.collect()
