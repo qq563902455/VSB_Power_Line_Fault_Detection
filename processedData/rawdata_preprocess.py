@@ -25,7 +25,7 @@ def signal2features(rawdata, window_size, fft_window_size,
 
     num_stft_features = int(stft_window_size/2) + 1
 
-    num_add_features = 12
+    num_add_features = 18
 
     result = np.zeros((rawdata.shape[1],
                        num_mean_features+num_fft_mean_features+num_stft_features+num_add_features))
@@ -33,19 +33,29 @@ def signal2features(rawdata, window_size, fft_window_size,
     for i in range(rawdata.shape[1]):
         result[i, 0] = int(rawdata.columns[i])
         result[i, 1] = rawdata[rawdata.columns[i]].values.mean()
-        result[i, 2] = rawdata[rawdata.columns[i]].values.std()
-        result[i, 3] = rawdata[rawdata.columns[i]].values.max()
-        result[i, 4] = rawdata[rawdata.columns[i]].values.min()
+        result[i, 2] = rawdata[rawdata.columns[i]].values.max()
+        result[i, 3] = rawdata[rawdata.columns[i]].values.min()
+
+        diff_data = np.diff(rawdata[rawdata.columns[i]].values, n=1)
+        result[i, 4] = diff_data.mean()
+        result[i, 5] = diff_data.std()
+        result[i, 6] = diff_data.max()
+        result[i, 7] = diff_data.min()
+
+        diff_data = np.diff(rawdata[rawdata.columns[i]].values, n=2)
+        result[i, 8] = diff_data.mean()
+        result[i, 9] = diff_data.std()
+        result[i, 10] = diff_data.max()
+        result[i, 11] = diff_data.min()
 
         f, t, Sxx = spectrogram(rawdata[rawdata.columns[i]].values,
                                 nperseg=stft_window_size,
                                 noverlap=stft_overlap
                                 )
 
-        result[i, 5] = Sxx.mean()
-        result[i, 6] = Sxx.std()
-        result[i, 7] = Sxx.max()
-        result[i, 8] = Sxx.min()
+        result[i, 12] = Sxx.mean()
+        result[i, 13] = Sxx.std()
+        result[i, 14] = Sxx.max()
 
         result[i, num_add_features:(num_add_features+num_stft_features)] = Sxx.mean(axis=1)
 
@@ -53,9 +63,9 @@ def signal2features(rawdata, window_size, fft_window_size,
                                nperseg=welch_count_length,
                                noverlap=welch_count_overlap)
 
-        result[i, 9] = (Pxx>2.5).sum()
-        result[i, 10] = (Pxx>80).sum()
-        result[i, 11] = f[np.where(Pxx == Pxx.max())]
+        result[i, 15] = (Pxx>2.5).sum()
+        result[i, 16] = (Pxx>80).sum()
+        result[i, 17] = f[np.where(Pxx == Pxx.max())]
 
 
         for j in range(num_mean_features):
@@ -69,16 +79,22 @@ def signal2features(rawdata, window_size, fft_window_size,
     result = pd.DataFrame(result)
     result = result.rename({0: 'signal_id',
                             1: 'mean',
-                            2: 'std',
-                            3: 'max',
-                            4: 'min',
-                            5: 'stft_mean',
-                            6: 'stft_std',
-                            7: 'stft_max',
-                            8: 'stft_min',
-                            9: 'welch>2.5',
-                            10: 'welch>80',
-                            11: 'max_welch_f',}, axis=1)
+                            2: 'max',
+                            3: 'min',
+                            4: 'diff_1_mean',
+                            5: 'diff_1_std',
+                            6: 'diff_1_max',
+                            7: 'diff_1_min',
+                            8: 'diff_2_mean',
+                            9: 'diff_2_std',
+                            10: 'diff_2_max',
+                            11: 'diff_2_min',
+                            12: 'stft_mean',
+                            13: 'stft_std',
+                            14: 'stft_max',
+                            15: 'welch>2.5',
+                            16: 'welch>80',
+                            17: 'max_welch_f',}, axis=1)
 
     result.signal_id = result.signal_id.astype(int)
 
