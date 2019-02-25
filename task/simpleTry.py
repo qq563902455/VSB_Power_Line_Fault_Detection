@@ -24,7 +24,7 @@ train_x = train.drop(['signal_id', 'id_measurement', 'target'], axis=1)
 train_y = train['target']
 
 
-# train_x =  train_x.drop(train_x.columns[4:7], axis=1)
+train_x =  train_x.drop(train_x.columns[4:7], axis=1)
 # train_x =  train_x.drop(train_x.columns[0:2], axis=1)
 
 # train_x.columns[4:7]
@@ -86,11 +86,11 @@ for i, (train_idx, valid_idx) in enumerate(kfold.split(train_x, train_y)):
     x_val_fold = train_x.iloc[valid_idx]
     y_val_fold = train_y.iloc[valid_idx]
 
-    model = lgb.LGBMClassifier(n_estimators=500,
+    model = lgb.LGBMClassifier(n_estimators=600,
                                # objective='binary',
                                learning_rate=0.02,
-                               num_leaves=32,
-                               min_child_samples=30,
+                               num_leaves=20,
+                               min_child_samples=35,
                                max_depth=6,
                                subsample=0.8,
                                colsample_bytree=0.8,
@@ -121,6 +121,8 @@ plt.figure(figsize=(12, 5))
 plt.bar(feature_importances.index, feature_importances.values)
 plt.show()
 
+
+feature_importances.sort_values().tail(50)
 
 plt.figure(figsize=(15,5))
 plt.subplot(121)

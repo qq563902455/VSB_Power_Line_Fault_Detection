@@ -25,7 +25,7 @@ def signal2features(rawdata, window_size, fft_window_size,
 
     num_stft_features = int(stft_window_size/2) + 1
 
-    num_add_features = 18
+    num_add_features = 23
 
     result = np.zeros((rawdata.shape[1],
                        num_mean_features+num_fft_mean_features+num_stft_features+num_add_features))
@@ -67,14 +67,38 @@ def signal2features(rawdata, window_size, fft_window_size,
         result[i, 16] = (Pxx>80).sum()
         result[i, 17] = f[np.where(Pxx == Pxx.max())]
 
+        rowdata_singleCol = rawdata[rawdata.columns[i]]
+        ma_data = rowdata_singleCol.rolling(20000, center=True, min_periods=1).mean()
+        res_data = rowdata_singleCol - ma_data
+        res_std = res_data.std()
+        res_abs = res_data.abs()
+
+        result[i, 18] =  res_data.mean()
+        result[i, 19] =  res_data.max()
+        result[i, 20] =  res_data.min()
+
+        result[i, 21] =  (res_abs>(res_std*5)).sum()
+        result[i, 22] =  (res_abs>(res_std*10)).sum()
+
+        del res_data
+        del ma_data
+        del Pxx
+        del Sxx
+        del f
+        gc.collect()
 
         for j in range(num_mean_features):
-            result[i, j+num_add_features+num_stft_features] = rawdata[rawdata.columns[i]].values[(j*window_size) : ((j+1)*window_size)].mean()
+            result[i, j+num_add_features+num_stft_features] = rowdata_singleCol.values[(j*window_size) : ((j+1)*window_size)].mean()
 
-        fft_re = np.fft.fft(rawdata[rawdata.columns[i]])[:int(rawdata.shape[0]/2)]
+        fft_re = np.fft.fft(rowdata_singleCol)[:int(rawdata.shape[0]/2)]
+
+        del rowdata_singleCol
+        gc.collect()
+
         fft_re_abs = np.sqrt(fft_re.real ** 2 + fft_re.imag ** 2)
         for j in range(num_fft_mean_features):
             result[i,  j + num_mean_features + num_add_features + num_stft_features] = fft_re_abs[(j*fft_window_size) : ((j+1)*fft_window_size)].mean()
+
 
     result = pd.DataFrame(result)
     result = result.rename({0: 'signal_id',
@@ -94,7 +118,12 @@ def signal2features(rawdata, window_size, fft_window_size,
                             14: 'stft_max',
                             15: 'welch>2.5',
                             16: 'welch>80',
-                            17: 'max_welch_f',}, axis=1)
+                            17: 'max_welch_f',
+                            18: 'res_mean',
+                            19: 'res_max',
+                            20: 'res_min',
+                            21: 'res_>5std',
+                            22: 'res_>10std'}, axis=1)
 
     result.signal_id = result.signal_id.astype(int)
 
@@ -111,12 +140,12 @@ def readRawSignal_extractFeatures(path, subset_size=500, start_id=0, end_id=2904
                 welch_count_length=1024,
                 welch_count_overlap=256
                 )
-    multiProcess = mutiProcessLoop(processFun, range(math.ceil((end_id-start_id)/subset_size)), n_process=4, silence=False)
+    multiProcess = mutiProcessLoop(processFun, range(math.ceil((end_id-start_id)/subset_size)), n_process=6, silence=False)
     resultlist = multiProcess.run()
     return pd.concat(resultlist)
 
-train_features = readRawSignal_extractFeatures('./rawdata/train.parquet',subset_size=2178, start_id=0, end_id=8712)
-test_features = readRawSignal_extractFeatures('./rawdata/test.parquet',subset_size=2000, start_id=8712, end_id=29049)
+train_features = readRawSignal_extractFeatures('./rawdata/train.parquet',subset_size=200, start_id=0, end_id=8712)
+test_features = readRawSignal_extractFeatures('./rawdata/test.parquet',subset_size=200, start_id=8712, end_id=29049)
 
 gc.collect()
 
