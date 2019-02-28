@@ -12,9 +12,14 @@ class singleModel:
         self.kfold = kfold
         self.model = model
 
-    def fit(self, X, Y, metric, addX=-1, addY=-1):
+    def fit(self, X, Y, metric, addX=-1, addY=-1,
+            train_pred_dim=None,
+            eval_set_param_name=None,
+            **kwargs):
         self.modelList = []
         self.scorelist = []
+        if train_pred_dim is not None:
+            self.train_pred = np.zeros((Y.shape[0], train_pred_dim))
         for kTrainIndex, kTestIndex in self.kfold.split(X, Y):
             kTrain_x = X.iloc[kTrainIndex]
             kTrain_y = Y.iloc[kTrainIndex]
@@ -27,12 +32,19 @@ class singleModel:
                 kTrain_y = kTrain_y.append(addY)
 
             model = cp.deepcopy(self.model)
-            model.fit(kTrain_x, kTrain_y)
+
+            if eval_set_param_name is not None:
+                kwargs = kwargs.copy()
+                kwargs[eval_set_param_name] = (kTest_x, kTest_y)
+
+            model.fit(kTrain_x, kTrain_y, **kwargs)
 
             if self.proba:
                 pre = model.predict_proba(kTest_x)
             else:
                 pre = model.predict(kTest_x)
+            if train_pred_dim is not None:
+                self.train_pred[kTestIndex] = pre
 
             score = metric(kTest_y, pre)
             print('score: ', score)
@@ -40,8 +52,10 @@ class singleModel:
             self.modelList.append(model)
             self.scorelist.append(score)
 
-        print('mean score: ', np.array(self.scorelist).mean())
-        print('std score: ', np.array(self.scorelist).std())
+        print('mean score:\t', np.array(self.scorelist).mean())
+        print('std score:\t', np.array(self.scorelist).std())
+        if train_pred_dim is not None:
+            print('total score:\t', metric(Y ,self.train_pred))
         print('-'*20)
 
     def predict_proba(self, X):
@@ -63,7 +77,7 @@ class singleModel:
 
         out = out/len(self.modelList)
         return out
-        
+
     def get_feature_importances(self):
         result = np.zeros(self.modelList[0].feature_importances_.shape[0])
         for model in self.modelList:
