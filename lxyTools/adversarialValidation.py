@@ -22,10 +22,10 @@ def adversarialValidation(train, test,
         model=lgb.LGBMClassifier(random_state=2019)
 
     model = singleModel(model, kfold=kfold)
-    model.fit(totaldata, isTest, metric=lambda x,y: roc_auc_score(x, y[:, 1]))
+    model.fit(totaldata, isTest, metric=lambda x,y: roc_auc_score(x, y[:, 1]), train_pred_dim=2)
 
     importances = model.get_feature_importances()
     importances = pd.Series(importances)
     importances.index = totaldata.columns
 
-    return importances
+    return importances, model.train_pred[:train.shape[0], 1]

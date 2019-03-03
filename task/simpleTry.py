@@ -30,12 +30,13 @@ test_x = test[train_x.columns]
 test_id = test.signal_id
 
 
-adv_feature_importances = adversarialValidation(train_x, test_x,
-                                                kfold=StratifiedKFold(
-                                                pd.concat([train.id_measurement,
-                                                           test.id_measurement]),
-                                                n_splits=5,
-                                                random_state=0, shuffle=True))
+adv_feature_importances, adv_pred = adversarialValidation(train_x, test_x,
+                                                          kfold=StratifiedKFold(
+                                                          pd.concat([train.id_measurement,
+                                                                     test.id_measurement]),
+                                                          n_splits=5,
+                                                          random_state=0, shuffle=True))
+
 
 adv_feature_importances.sort_values().tail(50)
 
@@ -71,18 +72,19 @@ def mcc_metric(y_true, y_pred_proba):
     return best_score, best_threshold
 
 
+
 fold_num=5
 kfold = StratifiedKFold(train.id_measurement, n_splits=fold_num, shuffle=True, random_state=10)
 model = lgb.LGBMClassifier(n_estimators=750,
                            # objective='binary',
                            learning_rate=0.02,
                            num_leaves=20,
-                           min_child_samples=35,
+                           min_child_samples=30,
                            max_depth=6,
                            subsample=0.8,
                            colsample_bytree=0.8,
                            reg_alpha=0.0,
-                           reg_lambda=0.0,
+                           reg_lambda=0.00,
                            random_state=2017)
 model = singleModel(model, kfold=kfold)
 model.fit(train_x, train_y, metric=lambda x,y: mcc_metric(x, y[:, 1])[0],
@@ -99,9 +101,11 @@ plt.show()
 feature_processed_importances = feature_importances - 1.0*adv_feature_importances
 feature_processed_importances = feature_processed_importances.sort_values()
 
+# feature_processed_importances.tail(40)
+feature_processed_importances.head(50)
 
 
-feature_selected = feature_processed_importances.tail(50).index
+feature_selected = feature_processed_importances.tail(15).index
 
 train_x_selected = train_x[feature_selected]
 test_x_selected = test_x[feature_selected]
@@ -118,12 +122,12 @@ adversarialValidation(train_x_selected, test_x_selected,
 
 fold_num=5
 kfold = StratifiedKFold(train.id_measurement, n_splits=fold_num, shuffle=True, random_state=10)
-model = lgb.LGBMClassifier(n_estimators=750,
+model = lgb.LGBMClassifier(n_estimators=650,
                            # objective='binary',
                            learning_rate=0.02,
                            num_leaves=20,
-                           min_child_samples=35,
-                           max_depth=6,
+                           min_child_samples=45,
+                           max_depth=7,
                            subsample=0.8,
                            colsample_bytree=0.8,
                            min_split_gain=0.0000,
@@ -134,6 +138,14 @@ model = singleModel(model, kfold=kfold)
 model.fit(train_x_selected, train_y, metric=lambda x,y: mcc_metric(x, y[:, 1])[0],
           train_pred_dim=2, eval_set_param_name='eval_set', eval_metric='auc',
           verbose=100)
+
+
+feature_final_importances = pd.Series(model.get_feature_importances())
+feature_final_importances.index = train_x_selected.columns
+
+
+feature_final_importances.sort_values()
+
 
 print('--'*20, 'calculating threshold', '--'*20)
 train_pred = model.train_pred[:, 1]

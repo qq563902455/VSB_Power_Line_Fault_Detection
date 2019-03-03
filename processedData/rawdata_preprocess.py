@@ -17,8 +17,14 @@ from lxyTools.process import mutiProcessLoop
 # rawdata: 原始的时间序列
 def extractFeatures(rawdata):
 
-    trend = rawdata.rolling(20000, center=True, min_periods=1, axis=0).mean()
+    rollingdata = rawdata.rolling(20000, center=True, min_periods=1, axis=0)
+    trend = rollingdata.mean()
     res = rawdata - trend
+
+    rolling_res_std = res.rolling(20000, center=True, min_periods=1, axis=0).std()
+    rolling_res_std_std = rolling_res_std.std(axis=0)
+    rolling_res_std_mean = rolling_res_std.mean(axis=0)
+
 
     res_std = res.std(axis=0)
     res_mean = res.mean(axis=0)
@@ -27,15 +33,29 @@ def extractFeatures(rawdata):
     outdata = pd.DataFrame()
     outdata['signal_id'] = rawdata.columns.values.astype(int)
 
+    # outdata['power_rawdata'] = (rawdata.values**2).sum(axis=0)
+
     # outdata['max_val_trend'] = trend.max(axis=0).values
     # outdata['min_val_trend'] = trend.min(axis=0).values
     outdata['mean_val_trend'] = trend.mean(axis=0).values
+    # outdata['power_trend'] = (trend.values**2).sum(axis=0)
 
     outdata['max_val_res'] = res.max(axis=0).values
     outdata['min_val_res'] = res.min(axis=0).values
     outdata['mean_val_res'] = res_mean.values
 
+    # outdata['power_res'] = (res.values**2).sum(axis=0)
+
     outdata['50%_val_res'] = np.percentile(res.values, 50, axis=0)
+
+    outdata['rolling_std_res_std'] = rolling_res_std_std.values
+    outdata['rolling_std_res_mean'] = rolling_res_std_mean.values
+    outdata['rolling_std_res_max'] = rolling_res_std.max(axis=0).values
+    outdata['rolling_std_res_min'] = rolling_res_std.min(axis=0).values
+
+    outdata['rolling_std_res>2.5std'] = ((rolling_res_std-rolling_res_std_mean)>(2.5*rolling_res_std_std)).sum(axis=0).values
+    outdata['rolling_std_res>5std'] = ((rolling_res_std-rolling_res_std_mean)>(5*rolling_res_std_std)).sum(axis=0).values
+    outdata['rolling_std_res>10std'] = ((rolling_res_std-rolling_res_std_mean)>(10*rolling_res_std_std)).sum(axis=0).values
 
     outdata['val>2.5std_res'] = (res_abs>(2.5*res_std)).sum(axis=0).values
     outdata['val>5std_res'] = (res_abs>(5*res_std)).sum(axis=0).values
@@ -124,12 +144,12 @@ def readRawSignal_extractFeatures(path, subset_size=500, start_id=0, end_id=2904
                     path,
                     columns=[str(val) for val in range(start_id+x*subset_size, min(start_id+(x+1)*subset_size, end_id))]).to_pandas()
                 )
-    multiProcess = mutiProcessLoop(processFun, range(math.ceil((end_id-start_id)/subset_size)), n_process=3, silence=False)
+    multiProcess = mutiProcessLoop(processFun, range(math.ceil((end_id-start_id)/subset_size)), n_process=5, silence=False)
     resultlist = multiProcess.run()
     return pd.concat(resultlist)
 
-train_features = readRawSignal_extractFeatures('./rawdata/train.parquet',subset_size=100, start_id=0, end_id=8712)
-test_features = readRawSignal_extractFeatures('./rawdata/test.parquet',subset_size=100, start_id=8712, end_id=29049)
+train_features = readRawSignal_extractFeatures('./rawdata/train.parquet',subset_size=60, start_id=0, end_id=8712)
+test_features = readRawSignal_extractFeatures('./rawdata/test.parquet',subset_size=60, start_id=8712, end_id=29049)
 
 gc.collect()
 
