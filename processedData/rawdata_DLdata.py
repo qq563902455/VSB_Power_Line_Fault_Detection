@@ -13,8 +13,15 @@ def extractFeatures(rawdata):
     out_df = pd.DataFrame()
     out_df['signal_id'] = rawdata.columns.astype(int)
 
-    rawdata = rawdata.values
-    rawdata = (2*(rawdata+128)/255)-1
+    rollingdata = rawdata.rolling(20000, center=True, min_periods=1, axis=0)
+    trend = rollingdata.mean()
+    res = rawdata - trend
+
+    res = res.values
+    res = (2*(res+128)/255)-1
+
+
+
 
     whole_signal_len = 800000
     processed_len = 160
@@ -22,7 +29,7 @@ def extractFeatures(rawdata):
 
     slice_list = []
     for i in range(0, whole_signal_len, bin_len):
-        signal_slice = rawdata[i:(i+bin_len), :]
+        signal_slice = res[i:(i+bin_len), :]
 
         mean_slice = signal_slice.mean(axis=0)
         std_slice = signal_slice.std(axis=0)

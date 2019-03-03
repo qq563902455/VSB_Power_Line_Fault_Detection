@@ -6,11 +6,11 @@ from lxyTools.pytorchTools import myBaseModule
 from lxyTools.pytorchTools import Attention
 
 class LSTM_softmax(nn.Module, myBaseModule):
-    def __init__(self, random_seed, features_dims, seq_len):
+    def __init__(self, random_seed, features_dims, seq_len, learning_rate, lstm_out_dim=80, lstm_layers=2):
         nn.Module.__init__(self)
         myBaseModule.__init__(self, random_seed)
-        lstm_out_dim = 80
-        lstm_layers = 2
+        # lstm_out_dim = 80
+        # lstm_layers = 2
         self.l2_weight = 0.0000
         self.lstm = nn.LSTM(features_dims, lstm_out_dim, lstm_layers, bidirectional=True, batch_first=True).cuda()
         self.lstm_attention = Attention(lstm_out_dim*2, seq_len)
@@ -20,7 +20,7 @@ class LSTM_softmax(nn.Module, myBaseModule):
         self.linear2 = nn.Linear(64, 1).cuda()
         self.sigmoid = nn.Sigmoid()
 
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=0.0003)
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=learning_rate)
 
 
     def forward(self, x):

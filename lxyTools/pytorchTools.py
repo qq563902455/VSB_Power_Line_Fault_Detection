@@ -135,7 +135,6 @@ class myBaseModule():
 
         batch_size = self.batch_size
 
-
         test_preds = np.zeros(len(x))
         for i, (x_batch,) in enumerate(test_loader):
             y_pred = self(x_batch)

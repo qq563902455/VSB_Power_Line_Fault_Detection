@@ -15,6 +15,7 @@ from sklearn.model_selection import StratifiedKFold;
 
 
 from specialTools.rnn_model import LSTM_softmax
+from specialTools.threePhasesNNModel import threePhasesModel
 
 
 train = pd.read_csv('./processedData/train_DL.csv')
@@ -56,57 +57,46 @@ def mcc_metric(y_true, y_pred_proba):
 
     return best_score, best_threshold
 
-answerlist = []
-for i in test.phase.unique().tolist():
-    train_x = train[train.phase==i].features
-    train_x = np.array(train_x.tolist())
-    train_y = train[train.phase==i].target.values
+seq_len = train.features[0].shape[0]
+features_dims = train.features[0].shape[1]
 
-    test_x = test[test.phase==i].features
-    test_x = np.array(test_x.tolist())
+modellist = [LSTM_softmax, LSTM_softmax, LSTM_softmax]
+modelParamList = [
+        {
+            'features_dims':features_dims,
+            'seq_len': seq_len,
+            'learning_rate': 0.0003,
+            'lstm_out_dim': 100,
+        },
+        {
+            'features_dims':features_dims,
+            'seq_len': seq_len,
+            'learning_rate': 0.0003,
+            'lstm_layers': 2,
+            'lstm_out_dim': 100,
 
-    test_id = test[test.phase==i].signal_id
+        },
+        {
+            'features_dims':features_dims,
+            'seq_len': seq_len,
+            'learning_rate': 0.0003,
+            'lstm_out_dim': 100,
+        }
+]
+phaseList = [0, 1, 2]
+train_epochs_list = [100, 100, 100]
+batch_size_list = [32, 32, 32]
 
-    seq_len = train.features[0].shape[0]
-    features_dims = train.features[0].shape[1]
+fold_num = 5
+kfold = StratifiedKFold(n_splits=fold_num, shuffle=True, random_state=10)
 
+model = threePhasesModel(modellist, modelParamList, phaseList)
+model.fit(train, kfold, train_epochs_list, batch_size_list, mcc_metric)
 
-    fold_num = 5
-    seed_start = 10086
+score, threshold = mcc_metric(model.train_total_target, model.train_total_preds)
+print('total score:\t', score, 'threshold:\t', threshold)
 
-    train_epochs = 25
-    batch_size = 32
+answer = model.predict_proba(test)
 
-    test_pred = np.zeros((test_x.shape[0], fold_num))
-    train_preds = np.zeros((len(train_x)))
-    kfold = StratifiedKFold(n_splits=fold_num, shuffle=True, random_state=10)
-    for i, (train_idx, valid_idx) in enumerate(kfold.split(train_x, train_y)):
-
-        x_train_fold = train_x[train_idx]
-        y_train_fold = train_y[train_idx, np.newaxis]
-        x_val_fold = train_x[valid_idx]
-        y_val_fold = train_y[valid_idx, np.newaxis]
-
-
-        model = LSTM_softmax(seed_start+i*500, features_dims, seq_len)
-        model = model.cuda()
-
-        model.fit(x_train_fold, y_train_fold, train_epochs, batch_size, x_val_fold, y_val_fold,
-                  custom_metric=roc_auc_score)
-
-        test_pred[:, i] = model.predict_proba(test_x)
-
-        train_preds[valid_idx] = model.predict_proba(x_val_fold)
-        print('=='*25)
-
-    score, threshold = mcc_metric(train_y, train_preds)
-    print('score:\t', score, 'threshold:\t', threshold)
-
-    print('test corr:')
-    print(pd.DataFrame(test_pred).corr())
-
-    answer = pd.DataFrame({'signal_id': test_id, 'target':(test_pred.mean(axis=1)>threshold).astype(int)})
-    answerlist.append(answer)
-
-answer_out = pd.concat(answerlist)
-answer_out.to_csv('./submit.csv', index=False)
+answer.target = (answer.target > threshold).astype(int)
+answer.to_csv('./submit.csv', index=False)
