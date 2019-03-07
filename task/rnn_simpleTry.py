@@ -67,6 +67,7 @@ modelParamList = [
             'seq_len': seq_len,
             'learning_rate': 0.0003,
             'lstm_out_dim': 100,
+            'lstm_layers': 2,
         },
         {
             'features_dims':features_dims,

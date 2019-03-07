@@ -16,7 +16,7 @@ class LSTM_softmax(nn.Module, myBaseModule):
         self.lstm_attention = Attention(lstm_out_dim*2, seq_len)
         self.linear = nn.Linear(lstm_out_dim*4, 64).cuda()
         self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(0.1)
+        self.dropout = nn.Dropout(0.10)
         self.linear2 = nn.Linear(64, 1).cuda()
         self.sigmoid = nn.Sigmoid()
 
