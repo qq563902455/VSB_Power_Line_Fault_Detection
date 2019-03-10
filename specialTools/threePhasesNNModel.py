@@ -15,6 +15,7 @@ class threePhasesModel:
         seed_step = 500
 
         self.fittedModelslist = [[], [], []]
+        self.thresholddict = {}
 
         train_total_preds = []
         train_total_target = []
@@ -44,12 +45,13 @@ class threePhasesModel:
                 batch_size = batch_size_list[phase]
 
                 model.fit(x_train_fold, y_train_fold, train_epochs, batch_size, x_val_fold, y_val_fold,
-                          custom_metric=roc_auc_score)
+                          custom_metric=roc_auc_score, plot_fold='_fold'+str(i))
 
                 train_preds[valid_idx] = model.predict_proba(x_val_fold)
                 self.fittedModelslist[phase].append(model)
 
             score, threshold = mcc_metric(train_y, train_preds)
+            self.thresholddict[phase] = threshold
 
             train_total_preds.append(train_preds)
             train_total_target.append(train_y)
@@ -60,7 +62,7 @@ class threePhasesModel:
         self.train_total_target = np.concatenate(train_total_target)
         print('finished')
 
-    def predict_proba(self, test):
+    def predict_proba(self, test, proba=False):
         answerlist = []
         for phase in self.phaseList:
             test_x = test[test.phase==phase].features
@@ -76,7 +78,13 @@ class threePhasesModel:
             print(pd.DataFrame(test_preds).corr().values.mean())
             test_preds = test_preds.mean(axis=1)
 
-            answer = pd.DataFrame({'signal_id':test_id, 'target':test_preds})
+            if proba:
+                answer = pd.DataFrame({'signal_id':test_id, 'target':test_preds>self.thresholddict[phase]})
+            else:
+                answer = pd.DataFrame({'signal_id':test_id, 'target':test_preds})
             answerlist.append(answer)
         result = pd.concat(answerlist)
         return result
+
+    def predict(self, test):
+        return self.predict_proba(test, proba=True)

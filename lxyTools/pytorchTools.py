@@ -11,6 +11,8 @@ import torch.nn as nn
 import torch.utils.data
 
 from tqdm import tqdm
+import visdom
+
 
 def set_random_seed(seed=2019):
     random.seed(seed)
@@ -62,12 +64,77 @@ class Attention(nn.Module):
         return torch.sum(weighted_input, 1)
 
 
+class selfAttention(nn.Module):
+    def __init__(self, qk_dim, v_dim, input_dim, dk=None):
+        nn.Module.__init__(self)
+
+        self.linear_q = nn.Linear(input_dim, qk_dim)
+        self.linear_k = nn.Linear(input_dim, qk_dim)
+        self.linear_v = nn.Linear(input_dim, v_dim)
+
+        if dk is not None:
+            self.dk = dk
+        else:
+            self.dk = qk_dim
+        self.softmax = nn.Softmax(dim=2)
+
+    def forward(self, x):
+        q = self.linear_q(x)
+        k = self.linear_k(x)
+        v = self.linear_v(x)
+
+        attention = torch.matmul(q, k.transpose(1, 2))/math.sqrt(self.dk)
+        attention = self.softmax(attention)
+        context = torch.matmul(attention, v)
+
+        return context
+
+class multiHeadAttention(nn.Module):
+    def __init__(self, qk_dim, v_dim, input_dim, h, dk=None):
+        nn.Module.__init__(self)
+
+        self.linear_q = nn.Linear(input_dim, qk_dim)
+        self.linear_k = nn.Linear(input_dim, qk_dim)
+        self.linear_v = nn.Linear(input_dim, v_dim)
+
+        self.head_num = h
+
+        if dk is not None:
+            self.dk = dk
+        else:
+            self.dk = int(qk_dim/h)
+
+        self.dv = int(v_dim/h)
+
+        self.softmax = nn.Softmax(dim=2)
+
+    def forward(self, x):
+        q = self.linear_q(x)
+        k = self.linear_k(x)
+        v = self.linear_v(x)
+
+        q = torch.cat(torch.chunk(q, self.head_num, dim=2), dim=0)
+        k = torch.cat(torch.chunk(k, self.head_num, dim=2), dim=0)
+        v = torch.cat(torch.chunk(v, self.head_num, dim=2), dim=0)
+
+        attention = torch.matmul(q, k.transpose(1, 2))/math.sqrt(self.dk)
+        attention = self.softmax(attention)
+        context = torch.matmul(attention, v)
+
+        context = torch.cat(torch.chunk(context, self.head_num, dim=0), dim=2)
+
+        return context
+
+
 class myBaseModule():
     def __init__(self, random_seed):
         self.random_seed = random_seed
         set_random_seed(self.random_seed)
 
-    def fit(self, x, y, epoch_nums, batch_size, valid_x, valid_y, custom_metric):
+    def fit(self, x, y, epoch_nums, batch_size, valid_x, valid_y, custom_metric, plot_fold=None):
+
+        if self.vis is not None:
+            vis = visdom.Visdom(env=self.vis)
 
         set_random_seed(self.random_seed)
 
@@ -82,7 +149,7 @@ class myBaseModule():
 
         optimizer = self.optimizer
 
-        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda epoch_num: 1/math.sqrt(epoch_num+1))
+        scheduler = self.scheduler
 
         train = torch.utils.data.TensorDataset(x_train, y_train)
         valid = torch.utils.data.TensorDataset(x_val, y_val)
@@ -122,6 +189,25 @@ class myBaseModule():
             score = custom_metric(valid_y, valid_preds)
 
             elapsed_time = time.time() - start_time
+
+            if self.vis is not None:
+                vis.line(X=torch.Tensor([[epoch, epoch]]),
+                         Y=torch.Tensor([[avg_loss/batch_size, avg_val_loss/batch_size]]),
+                         win='loss'+plot_fold,
+                         opts={'legend':['local_loss', 'valid_loss'],
+                               'xlabel': 'epoch',
+                               'title': 'train'+plot_fold},
+                         update='append' if epoch > 0 else None)
+
+
+            if self.vis is not None:
+                vis.line(X=torch.Tensor([epoch]),
+                         Y=torch.Tensor([score]),
+                         win='score'+plot_fold,
+                         opts={'legend':['score'],
+                               'xlabel': 'epoch',
+                               'title': 'valid'+plot_fold},
+                         update='append' if epoch > 0 else None)
 
     #         print('epoch ', epoch, 'avg loss:\t', avg_loss, 'max F1:\t', score, 'elapsed_time:\t', int(elapsed_time), 'threshold:\t', threshold)
             print('Epoch {}/{} \t loss={:.4f}  \t l2={:.4f} \t val_loss={:.4f} \t score={:.4f} \t time={:.2f}s'.format(

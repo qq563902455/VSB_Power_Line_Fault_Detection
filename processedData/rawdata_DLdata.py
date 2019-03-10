@@ -13,7 +13,7 @@ from scipy.signal import find_peaks
 from lxyTools.process import mutiProcessLoop
 
 
-
+#
 # def peakStatistics(data, std_ratio=5):
 #     re = np.zeros((data.shape[1], 1))
 #     for col in range(data.shape[1]):
