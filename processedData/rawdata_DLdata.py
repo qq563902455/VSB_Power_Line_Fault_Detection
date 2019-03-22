@@ -12,22 +12,81 @@ from scipy.signal import find_peaks
 
 from lxyTools.process import mutiProcessLoop
 
+def removeRPI(peaks, x):
+    peaks = sorted(peaks)
+    peaks_num = len(peaks)
+    peaks_pd = []
 
-#
-# def peakStatistics(data, std_ratio=5):
-#     re = np.zeros((data.shape[1], 1))
-#     for col in range(data.shape[1]):
-#         x = data[:, col]
-#         height = x.std()*std_ratio
-#         peaks, peaks_info = find_peaks(x, height=height, distance=100)
-#         neg_peaks, neg_peaks_info = find_peaks(-x, height=height, distance=100)
-#         peaks_height = np.concatenate([peaks_info['peak_heights'], neg_peaks_info['peak_heights']])
-#
-#         if peaks_height.shape[0] > 0:
-#             # re[col, 0] = peaks_height.min()
-#             # re[col, 1] = peaks_height.max()
-#             re[col, 0] = peaks_height.shape[0]/10
-#     return re
+    for i in range(peaks_num):
+        peak = peaks[i]
+        peak_height = x[peaks[i]]
+
+        if i!=0:
+            left_peak = peaks[i-1]
+            left_peak_height = x[peaks[i-1]]
+            if  peak - left_peak > 10000:
+                continue
+
+        if i!=peaks_num-1:
+            right_peak = peaks[i+1]
+            right_peak_height = x[peaks[i+1]]
+            if  right_peak - peak > 10000:
+                continue
+
+        peaks_pd.append(peak)
+
+    return peaks_pd
+
+
+
+def peakStatistics(data, std_ratio=5):
+    re = np.zeros((data.shape[1], 9))
+    for col in range(data.shape[1]):
+        x = data[:, col]
+        height = x.std()*std_ratio
+
+
+        peaks, peaks_info = find_peaks(x, height=height, distance=1000)
+        peaks = removeRPI(peaks, x)
+
+        neg_peaks, neg_peaks_info = find_peaks(-x, height=height, distance=1000)
+        neg_peaks = removeRPI(neg_peaks, x)
+
+        peaks_height = x[peaks+neg_peaks]
+
+        if peaks_height.shape[0] > 0:
+            re[col, 0] = peaks_height.min()
+            re[col, 1] = peaks_height.max()
+            re[col, 2] = peaks_height.shape[0]/1000
+
+            if peaks_height.shape[0] > 1:
+                re[col, 4] = np.percentile(peaks_height, 1)
+                re[col, 5] = np.percentile(peaks_height, 99)
+                re[col, 6] = np.percentile(peaks_height, 25)
+                re[col, 7] = np.percentile(peaks_height, 75)
+                re[col, 8] = np.percentile(peaks_height, 50)
+    return re
+
+def extractTestTarget(rawdata):
+    out_df = pd.DataFrame()
+    out_df['signal_id'] = rawdata.columns.astype(int)
+
+    rollingdata = rawdata.rolling(20000, center=True, min_periods=1, axis=0)
+    trend = rollingdata.mean()
+    res = (rawdata - trend).values
+    # res = np.diff(rawdata.values, n=1, axis=0)
+    res = (2*(res+128)/255)-1
+
+    # peaks_info_5std = peakStatistics(res, 5)
+    peaks_info_10std = peakStatistics(res, 10)
+
+    out = np.concatenate([peaks_info_10std], axis=1)
+
+    out_df['target'] = list(out)
+    return out_df
+
+
+
 
 def extractFeatures(rawdata):
     out_df = pd.DataFrame()
@@ -43,6 +102,11 @@ def extractFeatures(rawdata):
     res = (rawdata - trend).values
 
     # res = rawdata.values
+
+    # res = np.diff(rawdata.values, n=1, axis=0)
+
+
+    # res = rawdata.values
     # wavelet = 'db4'
     # coeflist = pywt.wavedec(res, wavelet, level=6, axis=0)
     # for i in range(1, len(coeflist)):
@@ -50,9 +114,31 @@ def extractFeatures(rawdata):
     # res = pywt.waverec(coeflist, wavelet, axis=0)
 
     res = (2*(res+128)/255)-1
+    #
+    # max_len = 1000
+    #
+    # features_np = np.zeros((res.shape[1], max_len, 2))
+    # for i in range(res.shape[1]):
+    #     x = res[:, i]
+    #     height = x.std()*5
+    #     peaks, peaks_info = find_peaks(x, height=height, distance=100)
+    #     neg_peaks, neg_peaks_info = find_peaks(-x, height=height, distance=100)
+    #
+    #     peaks = removeRPI(peaks, x)
+    #     neg_peaks = removeRPI(neg_peaks, x)
+    #
+    #     peaks_all = sorted(list(peaks)+list(neg_peaks))
+    #
+    #     peaks_all = peaks_all[0: max_len]
+    #     peaks_gap = np.diff(peaks_all, n=1)
+    #
+    #     features_np[i, :len(peaks_all), 0] = x[peaks_all]
+    #     features_np[i, :len(peaks_gap), 1] = peaks_gap/50000
+    #
+    # out_df['features'] = list(features_np)
 
     whole_signal_len = 800000
-    processed_len = 160
+    processed_len = 250
     bin_len = int(whole_signal_len/processed_len)
 
     slice_list = []
@@ -74,13 +160,7 @@ def extractFeatures(rawdata):
         relative_percentile = percentil_slice - mean_slice
 
 
-        # diff1_slice = diff_1_rawdata[i:(i+bin_len), :]
-        # diff1_percentil_slice = np.percentile(diff1_slice, [0, 1, 25, 50, 75, 99, 100], axis=0)
-
         out_slice = np.concatenate([
-                            # peaks_info_5std,
-                            # peaks_info_10std,
-                            # diff1_percentil_slice.T,
                             percentil_slice.T,
                             max_range.reshape(-1, 1),
                             relative_percentile.T,
@@ -110,12 +190,33 @@ def readRawSignal_extractFeatures(path, subset_size=50, start_id=0, end_id=29049
 train_features = readRawSignal_extractFeatures('./rawdata/train.parquet',subset_size=100, start_id=0, end_id=8712)
 test_features = readRawSignal_extractFeatures('./rawdata/test.parquet',subset_size=100, start_id=8712, end_id=29049)
 
+
+
+
+
+
+
+
+def readRawSignal_extractTestTarget(path, subset_size=50, start_id=8712, end_id=29049):
+    relist = []
+
+    processFun = lambda x: extractTestTarget(
+                pq.read_pandas(
+                    path,
+                    columns=[str(val) for val in range(start_id+x*subset_size, min(start_id+(x+1)*subset_size, end_id))]).to_pandas()
+                )
+    multiProcess = mutiProcessLoop(processFun, range(math.ceil((end_id-start_id)/subset_size)), n_process=4, silence=False)
+    resultlist = multiProcess.run()
+    return pd.concat(resultlist)
+
+
+test_targets = readRawSignal_extractTestTarget('./rawdata/test.parquet',subset_size=100, start_id=8712, end_id=29049)
+
+
 gc.collect()
 
 train_meta = pd.read_csv('./rawdata/metadata_train.csv')
 test_meta = pd.read_csv('./rawdata/metadata_test.csv')
-
-
 
 def threePhasesConcat(features, meta):
     temp = pd.merge(left=features, right=meta[['signal_id', 'id_measurement', 'phase']], on='signal_id', how='left')
@@ -138,6 +239,17 @@ def threePhasesConcat(features, meta):
 train_data = threePhasesConcat(train_features, train_meta)
 test_data = threePhasesConcat(test_features, test_meta)
 
+test_data_target = threePhasesConcat(test_targets, test_meta)
+
+
+targets_values_test = np.array([test_data_target.target_0.tolist(),
+                                test_data_target.target_1.tolist(),
+                                test_data_target.target_2.tolist()])
+
+targets_values_test = targets_values_test.transpose([1, 0, 2])
+targets_values_test =  targets_values_test.reshape(targets_values_test.shape[0], -1)
+np.save('./processedData/test_DL_target.npy', targets_values_test)
+
 features_values_train = np.array([train_data.features_0.tolist(),
                                   train_data.features_1.tolist(),
                                   train_data.features_2.tolist()])
@@ -149,14 +261,6 @@ features_values_test = np.array([test_data.features_0.tolist(),
                                  test_data.features_2.tolist()])
 features_values_test = features_values_test.transpose([1, 2, 0, 3])
 
-
-# features_all = np.concatenate([features_values_train, features_values_test], axis=0)
-#
-# maxval = features_all.max(axis=(0, 1, 2))
-# minval = features_all.min(axis=(0, 1, 2))
-#
-# features_values_train = 2*(features_values_train - minval)/(maxval - minval) - 1
-# features_values_test = 2*(features_values_test - minval)/(maxval - minval) - 1
 
 features_values_train =  features_values_train.reshape(features_values_train.shape[0], features_values_train.shape[1], -1)
 np.save('./processedData/train_DL_features.npy', features_values_train)

@@ -16,10 +16,9 @@ from sklearn.model_selection import StratifiedKFold;
 
 from specialTools.rnn_model import LSTM_softmax
 from specialTools.rnn_model import LSTM_selfAttention_softmax
-
+from specialTools.rnn_model import semi_superviesd_LSTM_selfAttention
 from specialTools.threePhasesNNModel import threePhasesModel
 from specialTools.threePhasesNNModel import mcc_metric
-
 
 train = pd.read_csv('./processedData/train_DL.csv')
 test = pd.read_csv('./processedData/test_DL.csv')
@@ -27,30 +26,45 @@ test = pd.read_csv('./processedData/test_DL.csv')
 train_features = np.load('./processedData/train_DL_features.npy')
 test_features = np.load('./processedData/test_DL_features.npy')
 
+test_target = np.load('./processedData/test_DL_target.npy')
+
 
 train['features'] = list(train_features)
 test['features'] = list(test_features)
+test['target'] = list(test_target)
+
+
+print(train.features[0].shape)
+
+test.head()
 
 del train_features
 del test_features
 gc.collect()
 
 
+
 seq_len = train.features[0].shape[0]
 features_dims = train.features[0].shape[1]
 
+test_target_dim = test.target[0].shape[0]
 
-# model 1
 
-modellist = [LSTM_selfAttention_softmax, LSTM_selfAttention_softmax, LSTM_selfAttention_softmax]
+modellist = [semi_superviesd_LSTM_selfAttention, semi_superviesd_LSTM_selfAttention, semi_superviesd_LSTM_selfAttention]
 modelParamList = [
         {
             'features_dims':features_dims,
             'seq_len': seq_len,
+            'unsupervised_out_dim': test_target_dim,
             'learning_rate': 0.0003,
+            'unsupervised_lr': 0.0005,
 
             'lstm_layers': 2,
-            'lstm_out_dim': 100,
+            'lstm_out_dim': 80,
+            'gru_layers': 1,
+            'gru_out_dim':  50,
+
+            'selfAttentionSeq_dim': 0,
 
             'selfAttention_dim': 200,
             'linearReduction_dim': 64,
@@ -60,10 +74,16 @@ modelParamList = [
         {
             'features_dims':features_dims,
             'seq_len': seq_len,
+            'unsupervised_out_dim': test_target_dim,
             'learning_rate': 0.0003,
+            'unsupervised_lr': 0.0005,
 
             'lstm_layers': 2,
-            'lstm_out_dim': 100,
+            'lstm_out_dim': 80,
+            'gru_layers': 1,
+            'gru_out_dim':  50,
+
+            'selfAttentionSeq_dim': 0,
 
             'selfAttention_dim': 200,
             'linearReduction_dim': 64,
@@ -73,10 +93,16 @@ modelParamList = [
         {
             'features_dims':features_dims,
             'seq_len': seq_len,
+            'unsupervised_out_dim': test_target_dim,
             'learning_rate': 0.0003,
+            'unsupervised_lr': 0.0005,
 
             'lstm_layers': 2,
-            'lstm_out_dim': 100,
+            'lstm_out_dim': 80,
+            'gru_layers': 1,
+            'gru_out_dim':  50,
+
+            'selfAttentionSeq_dim': 0,
 
             'selfAttention_dim': 200,
             'linearReduction_dim': 64,
@@ -91,82 +117,14 @@ batch_size_list = [32, 32, 32]
 fold_num = 5
 kfold = StratifiedKFold(n_splits=fold_num, shuffle=True, random_state=10)
 
-model_1 = threePhasesModel(modellist, modelParamList, phaseList)
-model_1.fit(train, kfold, train_epochs_list, batch_size_list)
+model = threePhasesModel(modellist, modelParamList, phaseList)
+model.fit(train, kfold, train_epochs_list, batch_size_list)
+          # test=test, test_epochs=10, test_batch_size=32)
 
-
-
-# model 2
-
-modellist = [LSTM_softmax, LSTM_softmax, LSTM_softmax]
-modelParamList = [
-        {
-            'features_dims':features_dims,
-            'seq_len': seq_len,
-            'learning_rate': 0.0003,
-
-            'lstm_layers': 2,
-            'lstm_out_dim': 100,
-
-            'linearReduction_dim': 64,
-
-            'env': 'phase_0',
-        },
-        {
-            'features_dims':features_dims,
-            'seq_len': seq_len,
-            'learning_rate': 0.0003,
-
-            'lstm_layers': 2,
-            'lstm_out_dim': 100,
-
-            'linearReduction_dim': 64,
-
-            'env': 'phase_1',
-        },
-        {
-            'features_dims':features_dims,
-            'seq_len': seq_len,
-            'learning_rate': 0.0003,
-
-            'lstm_layers': 2,
-            'lstm_out_dim': 100,
-
-            'linearReduction_dim': 64,
-
-            'env': 'phase_2',
-        }
-]
-phaseList = [0, 1, 2]
-train_epochs_list = [100, 100, 100]
-batch_size_list = [32, 32, 32]
-
-model_2 = threePhasesModel(modellist, modelParamList, phaseList)
-model_2.fit(train, kfold, train_epochs_list, batch_size_list)
-
-
-
-
-
-score, threshold = mcc_metric(model_1.train_total_target, model_1.train_total_preds)
-print('model_1 score:\t', score, 'threshold:\t', threshold)
-
-
-
-score, threshold = mcc_metric(model_2.train_total_target, model_2.train_total_preds)
-print('model_2 score:\t', score, 'threshold:\t', threshold)
-
-
-score, threshold = mcc_metric(model_1.train_total_target, 0.9*model_1.train_total_preds+0.1*model_2.train_total_preds)
+score, threshold = mcc_metric(model.train_total_target, model.train_total_preds)
 print('total score:\t', score, 'threshold:\t', threshold)
 
-
-answer_1 = model_1.predict_proba(test)
-answer_2 = model_2.predict_proba(test)
-
-answer= answer_1.copy()
-
-answer.target = 0.9*answer_1.target + 0.1*answer_2.target
+answer = model.predict_proba(test)
 
 answer.target = (answer.target > threshold).astype(int)
 answer.to_csv('./submit.csv', index=False)

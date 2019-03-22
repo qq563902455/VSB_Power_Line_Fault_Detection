@@ -131,7 +131,7 @@ class myBaseModule():
         self.random_seed = random_seed
         set_random_seed(self.random_seed)
 
-    def fit(self, x, y, epoch_nums, batch_size, valid_x, valid_y, custom_metric, plot_fold=None):
+    def fit(self, x, y, epoch_nums, batch_size, valid_x, valid_y, custom_metric=None, plot_fold=None):
 
         if self.vis is not None:
             vis = visdom.Visdom(env=self.vis)
@@ -145,7 +145,7 @@ class myBaseModule():
         x_val = torch.tensor(valid_x, dtype=torch.float32).cuda()
         y_val = torch.tensor(valid_y, dtype=torch.float32).cuda()
 
-        loss_fn = torch.nn.BCELoss(reduction="sum")
+        loss_fn = self.loss_fn
 
         optimizer = self.optimizer
 
@@ -159,7 +159,7 @@ class myBaseModule():
 
         for epoch in range(epoch_nums):
             scheduler.step()
-            print('lr:\t', scheduler.get_lr()[0])
+            # print('lr:\t', scheduler.get_lr()[0])
 
             start_time = time.time()
             self.train()
@@ -186,7 +186,8 @@ class myBaseModule():
                 avg_val_loss += loss_fn(y_pred, y_batch).item() / len(valid_loader)
                 valid_preds[i * batch_size:(i+1) * batch_size] = y_pred.cpu().numpy()[:, 0]
 
-            score = custom_metric(valid_y, valid_preds)
+            if custom_metric is not None:
+                score = custom_metric(valid_y, valid_preds)
 
             elapsed_time = time.time() - start_time
 
@@ -199,19 +200,22 @@ class myBaseModule():
                                'title': 'train'+plot_fold},
                          update='append' if epoch > 0 else None)
 
+            if custom_metric is not None:
+                if self.vis is not None:
+                    vis.line(X=torch.Tensor([epoch]),
+                             Y=torch.Tensor([score]),
+                             win='score'+plot_fold,
+                             opts={'legend':['score'],
+                                   'xlabel': 'epoch',
+                                   'title': 'valid'+plot_fold},
+                             update='append' if epoch > 0 else None)
 
-            if self.vis is not None:
-                vis.line(X=torch.Tensor([epoch]),
-                         Y=torch.Tensor([score]),
-                         win='score'+plot_fold,
-                         opts={'legend':['score'],
-                               'xlabel': 'epoch',
-                               'title': 'valid'+plot_fold},
-                         update='append' if epoch > 0 else None)
-
-    #         print('epoch ', epoch, 'avg loss:\t', avg_loss, 'max F1:\t', score, 'elapsed_time:\t', int(elapsed_time), 'threshold:\t', threshold)
-            print('Epoch {}/{} \t loss={:.4f}  \t l2={:.4f} \t val_loss={:.4f} \t score={:.4f} \t time={:.2f}s'.format(
-                epoch + 1, epoch_nums, avg_loss/batch_size, avg_l2_reg, avg_val_loss/batch_size, score, elapsed_time))
+            if custom_metric is not None:
+                print('Epoch {}/{} \t loss={:.4f}  \t l2={:.4f} \t val_loss={:.4f} \t score={:.4f} \t time={:.2f}s'.format(
+                    epoch + 1, epoch_nums, avg_loss/batch_size, avg_l2_reg, avg_val_loss/batch_size, score, elapsed_time))
+            else:
+                print('Epoch {}/{} \t loss={:.4f}  \t l2={:.4f} \t val_loss={:.4f} \t time={:.2f}s'.format(
+                    epoch + 1, epoch_nums, avg_loss/batch_size, avg_l2_reg, avg_val_loss/batch_size, elapsed_time))
 
     def predict_proba(self, x):
 

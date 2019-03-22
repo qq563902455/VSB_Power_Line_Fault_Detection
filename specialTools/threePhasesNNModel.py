@@ -1,6 +1,34 @@
 import numpy as np
 import pandas as pd
 from sklearn.metrics import roc_auc_score
+from sklearn.metrics import mean_squared_error
+
+
+def mcc_metric(y_true, y_pred_proba):
+
+    best_score = 0
+    best_threshold = 0
+
+    for threshold in [val/100 for val in range(100)]:
+
+        y_pred = y_pred_proba > threshold
+
+        tp = np.sum((y_true == 1) & (y_pred == 1))
+        tn = np.sum((y_true == 0) & (y_pred == 0))
+
+        fp = np.sum((y_true == 1) & (y_pred == 0))
+        fn = np.sum((y_true == 0) & (y_pred == 1))
+
+        if tp == 0 or tn == 0: continue
+
+        score = ((tp*tn)-(fp*fn))/np.sqrt((tp+fp)*(tp+fn)*(tn+fp)*(tn+fn))
+
+        if score > best_score:
+            best_score = score
+            best_threshold = threshold
+
+
+    return best_score, best_threshold
 
 class threePhasesModel:
     def __init__(self, modellist, modelParamList, phaseList):
@@ -9,7 +37,11 @@ class threePhasesModel:
         self.modelParamList = modelParamList
         self.phaseList = phaseList
 
-    def fit(self, train, kfold, train_epochs_list, batch_size_list, mcc_metric, debug_phase=None):
+    def fit(self, train, kfold, train_epochs_list, batch_size_list,
+            test=None,
+            test_epochs=None,
+            test_batch_size=None,
+            debug_phase=None):
 
         seed_start = 10086
         seed_step = 500
@@ -44,10 +76,22 @@ class threePhasesModel:
                 train_epochs = train_epochs_list[phase]
                 batch_size = batch_size_list[phase]
 
+                if test is not None:
+
+                    test_x = np.array(test[test.phase==phase].features.tolist())
+                    test_y = np.array(test[test.phase==phase].target.tolist())
+
+                    model.unsupervisedTraining(test_x, test_y,
+                                               test_epochs, test_batch_size,
+                                               0.7,
+                                               plot_fold='_unsupervision_fold'+str(i))
                 model.fit(x_train_fold, y_train_fold, train_epochs, batch_size, x_val_fold, y_val_fold,
                           custom_metric=roc_auc_score, plot_fold='_fold'+str(i))
 
                 train_preds[valid_idx] = model.predict_proba(x_val_fold)
+                score, threshold = mcc_metric(train_y[valid_idx], train_preds[valid_idx])
+                print('fold', str(i), 'score:\t', score, 'threshold:\t', threshold)
+
                 self.fittedModelslist[phase].append(model)
 
             score, threshold = mcc_metric(train_y, train_preds)
