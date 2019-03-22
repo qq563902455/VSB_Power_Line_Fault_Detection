@@ -93,49 +93,12 @@ def extractFeatures(rawdata):
     out_df['signal_id'] = rawdata.columns.astype(int)
 
 
-    # rawdata_val = (2*(rawdata.values+128)/255)-1
-    # diff_1_rawdata = np.diff(rawdata_val, n=1, axis=0)
-
-
     rollingdata = rawdata.rolling(20000, center=True, min_periods=1, axis=0)
     trend = rollingdata.mean()
     res = (rawdata - trend).values
 
-    # res = rawdata.values
-
-    # res = np.diff(rawdata.values, n=1, axis=0)
-
-
-    # res = rawdata.values
-    # wavelet = 'db4'
-    # coeflist = pywt.wavedec(res, wavelet, level=6, axis=0)
-    # for i in range(1, len(coeflist)):
-    #     coeflist[i] = pywt.threshold(coeflist[i], 5, 'hard')
-    # res = pywt.waverec(coeflist, wavelet, axis=0)
 
     res = (2*(res+128)/255)-1
-    #
-    # max_len = 1000
-    #
-    # features_np = np.zeros((res.shape[1], max_len, 2))
-    # for i in range(res.shape[1]):
-    #     x = res[:, i]
-    #     height = x.std()*5
-    #     peaks, peaks_info = find_peaks(x, height=height, distance=100)
-    #     neg_peaks, neg_peaks_info = find_peaks(-x, height=height, distance=100)
-    #
-    #     peaks = removeRPI(peaks, x)
-    #     neg_peaks = removeRPI(neg_peaks, x)
-    #
-    #     peaks_all = sorted(list(peaks)+list(neg_peaks))
-    #
-    #     peaks_all = peaks_all[0: max_len]
-    #     peaks_gap = np.diff(peaks_all, n=1)
-    #
-    #     features_np[i, :len(peaks_all), 0] = x[peaks_all]
-    #     features_np[i, :len(peaks_gap), 1] = peaks_gap/50000
-    #
-    # out_df['features'] = list(features_np)
 
     whole_signal_len = 800000
     processed_len = 250
@@ -145,8 +108,6 @@ def extractFeatures(rawdata):
     for i in range(0, whole_signal_len, bin_len):
         signal_slice = res[i:(i+bin_len), :]
 
-        # peaks_info_5std = peakStatistics(signal_slice, std_ratio=5)
-        # peaks_info_10std = peakStatistics(signal_slice, std_ratio=10)
 
         mean_slice = signal_slice.mean(axis=0)
         std_slice = signal_slice.std(axis=0)
